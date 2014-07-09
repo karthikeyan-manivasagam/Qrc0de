@@ -1,0 +1,196 @@
+<?php
+// $Id: qr_codes_goqr_qr.module,v 1.1.2.1 2010/06/28 17:09:33 loubabe Exp $
+
+/**
+ * Implementation of hook_qr_codes().
+ */
+
+function qr_codes_goqr_menu(){
+  $items = array();
+  $items['admin/settings/qr_codes/preview'] = array('type' => MENU_LOCAL_TASK,
+        'title' => "Preview / Generate",
+        'page callback' => 'qr_codes_goqr_preview',
+        'access arguments' => array('administer qr_codes'),
+        'weight'   => 10,
+        ); 
+  $items['admin/settings/qr_codes/preview/file'] = array('type' => MENU_CALLBACK,
+        'page callback' => 'qr_codes_goqr_get_files_link',
+        'access arguments' => array('administer qr_codes'),
+        ); 
+  return $items;
+
+}
+
+function qr_codes_goqr_qr_codes($op, $a2 = NULL, $data = NULL, $width = NULL, $height = NULL, $margin = NULL,$format = "png" ,$colors = array()) {
+  switch ($op) {
+    case 'list':
+      return array('qr_codes_goqr' => t('QR code generator API'));
+    case 'description':
+      return t('QR code generator API. See http://goqr.me');
+
+    case 'config':
+      $form['qr_codes_goqr_url'] = array(
+        '#type' => 'textfield',
+        '#title' => t('QR code generator API URI'),
+        '#description' => t('Enter the URI for the custom API service.'),
+        '#default_value' => variable_get('qr_codes_goqr_url', 'http://api.qrserver.com/v1/create-qr-code/'),
+      );
+      return $form;
+
+    case 'generate':
+      $data  = !empty($data) && $data != "" ? urlencode($data) : $base_url ;
+      $width =  !empty($width) && $width != "" ? $width : 300 ;
+      $height =  !empty($height) && $height != "" ? $height : 300 ;
+      $format = !empty($format) && $format != "" ? $format : 'png' ;
+      $fg = !empty($colors['fg']) && $colors['fg'] != "" ?  trim(str_replace('#', '', $colors['fg'])) : '000000';
+      $bg = !empty($colors['bg']) && $colors['bg'] != "" ?  trim(str_replace('#', '', $colors['bg'])) : 'FFFFFF';
+
+      $url = variable_get('qr_codes_goqr_url', 'http://api.qrserver.com/v1/create-qr-code/') .'?color='.$fg.'&bgcolor='.$bg.'&data='.$data.'&qzone=1&margin=0&size='.$height.'x'.$width.'&ecc=L&format='.$format;
+      $image = drupal_http_request($url);
+      file_save_data($image->data, $a2, FILE_EXISTS_REPLACE);
+
+  }
+}
+
+
+function qr_codes_goqr_preview(){   
+  $get = qr_codes_goqr_retrive($_POST);
+  $output .= drupal_get_form('qr_codes_goqr_preview_frm');
+  $output .= "<br />". $get;
+
+    return $output;
+}
+function qr_codes_goqr_preview_frm($form) {
+  global $base_url;
+  $form = array();
+  $form['url'] = array(
+   "#type"=>"textfield",
+   '#title' => "URL", 
+   '#description' => t('URL to generate QR code , Enter full URL '),
+   '#attributes'=>array("style"=>"width:700px;")
+  );
+
+  $form['height'] = array(
+        "#type"=>"textfield",
+        '#title' => "Size", 
+        '#description' => t('Size of a QR Code. Maximum 1000')
+  );
+  $form['format'] = array(
+  "#type"=>"select",
+  '#title' => "File Format", 
+  "#options" => array("png" =>"png",
+                      "gif" => "gif" ,
+                      "jpeg" => "jpeg",
+                      "jpg" =>"jpg",
+                      "svg" =>"svg" ,
+                      "eps" =>"eps"),
+  '#description' => t('File Format to generate QR code '),); 
+  $form['backgroundcolor'] = array(
+  '#type' => (module_exists('colorpicker') ? 'colorpicker_' : '') . 'textfield',
+  '#title' => t('Background Color'),
+  '#description' => t('Background color of a QR Code '),
+  '#default_value' => '#FFFFFF',
+  );
+
+  $form['foregroundcolor'] = array(
+  '#type' => (module_exists('colorpicker') ? 'colorpicker_' : '') . 'textfield',
+  '#title' => t(' Foreground Color'),
+  '#description' => t('Foreground color of a QR Code '),
+  '#default_value' => '#000000',
+  );
+
+  $form['submit'] = array(
+  '#type' => 'submit',
+  '#value' => t('Generate'),
+  );
+     
+ return $form;
+}
+
+function qr_codes_goqr_preview_frm_validate($form,&$form_state){ 
+  if(is_numeric($form_state['values']['height'])) {
+     if($form_state['values']['height'] > 1000){
+        form_set_error('height',t('Height should be less than 1000'));
+     }
+  }else if($form_state['values']['height'] != ""){
+      form_set_error('height',t('Height should be numeric'));
+  }
+  if (filter_var(trim($form_state['values']['url']), FILTER_VALIDATE_URL) === FALSE && trim($form_state['values']['url']) != "" ) {
+      form_set_error('url',t('URL should be valid'));
+  }  
+}
+function qr_codes_goqr_retrive($post) {
+  global $base_url;
+  if(is_numeric($post['height'])) {
+     if($post['height'] > 1000){
+       $height = 300;
+       $width = 300;
+     }else {
+        $height =  $post['height']; 
+         $_SESSION['height'] = $height;
+         $_SESSION['width'] = $height;
+     }
+  }else if($post['height'] != ""){
+     $height = 300;
+     $width = 300;
+  }
+  if (filter_var($post['url'], FILTER_VALIDATE_URL) === FALSE && $post['url'] != "" ) {
+     $url = "";
+  }else if($post['url'] != "") {
+    $url = trim($post['url']);
+    $_SESSION['url'] = $url;
+  }
+  if($post['format'] != "" ) {
+    $format = $post['format'];
+    $_SESSION['format'] = $format;
+  }
+
+  if($post['foregroundcolor'] != "" ) {
+    $foregroundcolor = $post['foregroundcolor'];
+    $_SESSION['foregroundcolor'] = $foregroundcolor;
+  }
+  if($post['backgroundcolor'] != "" ) {
+    $backgroundcolor = $post['backgroundcolor'];
+    $_SESSION['backgroundcolor'] = $backgroundcolor;
+  }
+  
+      $fgcolor      =  $_SESSION['foregroundcolor'];
+      $bgcolor      = $_SESSION['backgroundcolor'];
+      $colors['fg'] = $fgcolor;
+      $colors['bg'] = $bgcolor;
+      $p_url        = isset($_SESSION['url']) ? $_SESSION['url'] : $base_url ;
+      $p_height     = isset($_SESSION['height']) ? $_SESSION['height'] : 300 ;
+      $p_width      = isset($_SESSION['width']) ? $_SESSION['width'] : 300 ;
+      $p_format     = isset($_SESSION['format']) ? $_SESSION['format'] : 'png' ;
+      $p_bg         = isset($_SESSION['backgroundcolor']) ? $_SESSION['backgroundcolor'] : '#FFFFFF' ;
+      $p_fg         = isset($_SESSION['foregroundcolor']) ? $_SESSION['foregroundcolor'] : '#000000' ;
+      if(isset($_SESSION['url']) || isset($_SESSION['height']) ||   isset($_SESSION['width'])  || isset($_SESSION['format'])  ||  isset($_SESSION['backgroundcolor']) ||  isset($_SESSION['foregroundcolor']) ) {
+      $output = "<div class='qr_code_display'><div> <table border=1  style='border:none !important;'><caption>Generated QR code details</caption><thead><tr><th>Attribute</th><th>Value</th></tr></thead><tbody><tr><td>URL</td><td>".$p_url."</td></tr> <tr><td>Size</td><td>".$p_height."</td></tr><tr><td>File Format</td><td>".$p_format."</td></tr><tr><td>Foreground Color</td><td>".$p_fg."</td></tr><tr><td>Background Color</td><td>".$p_bg."</td></tr></tbody></table> <br/><a href='".$base_url."/admin/settings/qr_codes/preview/file'>Download Here</a></div><br />";
+      $output .= theme('qr_codes', $_SESSION['url'], $_SESSION['height'],  $_SESSION['width'] , 0,"" ,"",variable_get('qr_codes_block_imagecache_preset', ''),array(),$_SESSION['format'],$colors);
+      $output .= "</div>"; 
+      } 
+
+    // $output .= get_files_link();
+    return $output;
+}
+
+function qr_codes_goqr_get_files_link() {
+  $margin = 0;
+  $condition = isset($_SESSION['url']) || isset($_SESSION['height']) ||   isset($_SESSION['width'])  || isset($_SESSION['format'])  ||  isset($_SESSION['backgroundcolor']) ||  isset($_SESSION['foregroundcolor']);  
+  if($condition) {
+      $p_url    = isset($_SESSION['url']) ? $_SESSION['url'] : '' ;
+      $p_height = isset($_SESSION['height']) ? $_SESSION['height'] : 300 ;
+      $p_width  = isset($_SESSION['width']) ? $_SESSION['width'] : 300 ;
+      $p_format = isset($_SESSION['format']) ? $_SESSION['format'] : 'png' ;
+      $p_bg     = isset($_SESSION['backgroundcolor']) ? $_SESSION['backgroundcolor'] : '#FFFFFF' ;
+      $p_fg     = isset($_SESSION['foregroundcolor']) ? $_SESSION['foregroundcolor'] : '#000000' ;
+    $imagename = md5($p_url.$p_width  . $p_height . $margin.$p_fg.$p_bg) .'.'.$p_format;
+    $dir = file_directory_path() . '/qr_codes/';
+    $file = $dir . $imagename;
+    header('Content-Type: application/octet-stream');
+    header('Content-Disposition: attachment; filename="'.basename($file).'"');
+    header('Content-Length: ' . filesize($file));
+    readfile($file);
+    exit();
+  }
+}
